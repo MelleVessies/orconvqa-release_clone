@@ -29,7 +29,7 @@ python3 train_pipeline.py \
     --blocks_path=path_to_all_blocks_txt\
     --passage_reps_path="./data/passage_reps.pkl"\
     --passage_ids_path="./data/passage_ids.pkl"\
-    --output_dir=output_dir\
+    --output_dir="./output"\
     --load_small=False  \
     --history_num=6 \
     --do_train=False\
@@ -43,13 +43,13 @@ python3 train_pipeline.py \
     --save_steps=5000\
     --overwrite_output_dir=False\
     --eval_all_checkpoints=True \
-    --fp16=True \
-    --retriever_cache_dir=path_to_huggingface_albert_v1_cache \
+    --fp16=False \
+    --retriever_cache_dir="./cache" \
     --retrieve_checkpoint="./data/retriever_checkpoint/checkpoint-5917" \
     --retrieve_tokenizer_dir="./data/retriever_checkpoint/" \
     --top_k_for_retriever=100 \
     --use_retriever_prob=True \
-    --reader_cache_dir=path_to_huggingface_bert_cache \
+    --reader_cache_dir="./cache" \
     --qa_loss_factor=1.0 \
     --retrieval_loss_factor=1.0 \
     --top_k_for_reader=5 \
