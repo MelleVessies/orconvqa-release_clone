@@ -87,3 +87,5 @@ modules.xml
 
 data/
 venv/
+cache/
+output/
