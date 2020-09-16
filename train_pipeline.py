@@ -848,6 +848,7 @@ if args.fp16:
         raise ImportError(
             "Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
 
+
 logger.info(f'loading passage ids from {args.passage_ids_path}')
 with open(args.passage_ids_path, 'rb') as handle:
     passage_ids = pkl.load(handle)
@@ -856,6 +857,28 @@ logger.info(f'loading passage reps from {args.passage_reps_path}')
 with open(args.passage_reps_path, 'rb') as handle:
     passage_reps = pkl.load(handle)
 
+# TODO reading .plk files for Mac
+'''
+# GIGURU & MELLE: Other way to read pkl files, because they are too large
+# https://stackoverflow.com/questions/31468117/python-3-can-pickle-handle-byte-objects-larger-than-4gb
+Start replacement
+logger.info(f'loading passage ids from {args.passage_ids_path}')
+bytes_in = bytearray(0)
+max_bytes = 2**31 - 1
+input_size = os.path.getsize(args.passage_ids_path)
+with open(args.passage_ids_path, 'rb') as f_in:
+    for _ in range(0, input_size, max_bytes):
+        bytes_in += f_in.read(max_bytes)
+passage_ids = pkl.loads(bytes_in)
+
+logger.info(f'loading passage reps from {args.passage_reps_path}')
+input_size = os.path.getsize(args.passage_reps_path)
+with open(args.passage_reps_path, 'rb') as f_in:
+    for _ in range(0, input_size, max_bytes):
+        bytes_in += f_in.read(max_bytes)
+passage_reps = pkl.loads(bytes_in)
+#end replacement
+'''
 logger.info('constructing passage faiss_index')
 faiss_res = faiss.StandardGpuResources() 
 index = faiss.IndexFlatIP(args.proj_size)

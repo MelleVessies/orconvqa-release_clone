@@ -20,15 +20,15 @@
 #--reader_cache_dir=path_to_huggingface_bert_cache
 #   optional
 python3 train_pipeline.py \
-    --train_file="./data/preprocessed/test.txt" \
-    --dev_file="./data/preprocessed/dev.txt" \
-    --test_file="./data/preprocessed/test.txt" \
-    --orig_dev_file="./data/quac_format/dev.txt"\
-    --orig_test_file="./data/quac_format/test.txt"\
-    --qrels="./data/qrels.txt"\
+    --train_file="data/preprocessed/test.txt" \
+    --dev_file="data/preprocessed/dev.txt" \
+    --test_file="data/preprocessed/test.txt" \
+    --orig_dev_file="data/quac_format/dev.txt"\
+    --orig_test_file="data/quac_format/test.txt"\
+    --qrels="data/qrels.txt"\
     --blocks_path=path_to_all_blocks_txt\
-    --passage_reps_path="./data/passage_reps.pkl"\
-    --passage_ids_path="./data/passage_ids.pkl"\
+    --passage_reps_path="data/passage_reps.pkl"\
+    --passage_ids_path="data/passage_ids.pkl"\
     --output_dir="./output"\
     --load_small=False  \
     --history_num=6 \
@@ -45,8 +45,8 @@ python3 train_pipeline.py \
     --eval_all_checkpoints=True \
     --fp16=False \
     --retriever_cache_dir="./cache" \
-    --retrieve_checkpoint="./data/retriever_checkpoint/checkpoint-5917" \
-    --retrieve_tokenizer_dir="./data/retriever_checkpoint/" \
+    --retrieve_checkpoint="data/retriever_checkpoint/checkpoint-5917" \
+    --retrieve_tokenizer_dir="data/retriever_checkpoint/" \
     --top_k_for_retriever=100 \
     --use_retriever_prob=True \
     --reader_cache_dir="./cache" \
