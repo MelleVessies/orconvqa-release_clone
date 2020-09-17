@@ -8,17 +8,23 @@
 #SBATCH --partition=gpu_shared_course
 #SBATCH --gres=gpu:1
 
+# Load modules from LISA SurfSara
 module purge
-
 module load pre2019
-module load Python/3.6.3-foss-2017b
+python3 --version
 module load cuDNN/7.0.5-CUDA-9.0.176
 module load NCCL/2.0.5-CUDA-9.0.176
-export LD_LIBRARY_PATH=/hpc/eb/Debian9/cuDNN/7.1-CUDA-8.0.44-GCCcore-5.4.0/lib64:$LD_LIBRARY_PATH
+$export LD_LIBRARY_PATH=/hpc/eb/Debian9/cuDNN/7.1-CUDA-8.0.44-GCCcore-5.4.0/lib64:$LD_LIBRARY_PATH
 
-pip3 install --user torchvision
-pip3 install --user tensorflow_gpu
+# upgrade pip
+# python3 -m pip install --user --upgrade pip
+
+# Install packages, etc.
+echo "Installing requirements.txt..."
 pip3 install --user -r requirements.txt
+echo "Installing other packages..."
+pip3 install --user faiss-gpu cudatoolkit==9.0 -c pytorch
+pip3 install --user pytrec_eval
 
 # Create folders in Scratch
 mkdir "$TMPDIR"/data
@@ -29,7 +35,7 @@ mkdir "$TMPDIR"/cache
 cp $HOME/ir2/* "$TMPDIR"
 cp -r $HOME/ir2/data "$TMPDIR"/data
 
-srun bash --user run.sh
+srun bash run.sh
 
 #Copy output data from scratch to home
 cp -r "$TMPDIR"/output $HOME/ir2/output
