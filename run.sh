@@ -1,4 +1,14 @@
 #!/bin/zsh
+echo "Working directory: $PWD"
+
+# Install packages, etc.
+echo "Installing requirements.txt..."
+pip3 install --user -r requirements.txt
+echo "Installing other packages..."
+pip3 install --user faiss-gpu cudatoolkit==9.0 -c pytorch
+pip3 install --user pytrec_eval
+pip3 install --user transformers==2.3.0 torch==1.2.0 tqdm==4.48.2
+
 #--load_small
 #   set to True to load a small amount of data only for testing purposes)`
 #--history_num
@@ -19,7 +29,7 @@
 #   fine tune the question encoder in the retriever
 #--reader_cache_dir=path_to_huggingface_bert_cache
 #   optional
-python3 train_pipeline.py \
+python3 "$TMPDIR"/train_pipeline.py \
     --train_file="data/preprocessed/test.txt" \
     --dev_file="data/preprocessed/dev.txt" \
     --test_file="data/preprocessed/test.txt" \
