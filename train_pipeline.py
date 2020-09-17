@@ -883,7 +883,7 @@ logger.info('constructing passage faiss_index')
 faiss_res = faiss.StandardGpuResources() 
 index = faiss.IndexFlatIP(args.proj_size)
 index.add(passage_reps)
-gpu_index = faiss.index_cpu_to_gpu(faiss_res, 1, index)
+gpu_index = faiss.index_cpu_to_gpu(faiss_res, 0, index)
 
 # logger.info(f'loading all blocks from {args.blocks_path}')
 # with open(args.blocks_path, 'rb') as handle:
