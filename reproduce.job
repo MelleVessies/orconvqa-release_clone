@@ -9,7 +9,6 @@
 #SBATCH --gres=gpu:1
 
 module purge
-module load eb
 
 module load pre2019
 module load Python/3.6.3-foss-2017b
