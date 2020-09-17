@@ -20,4 +20,17 @@ export LD_LIBRARY_PATH=/hpc/eb/Debian9/cuDNN/7.1-CUDA-8.0.44-GCCcore-5.4.0/lib64
 pip3 install --user torchvision
 pip3 install --user tensorflow_gpu
 pip3 install --user -r requirements.txt
+
+# Create folders in Scratch
+mkdir "$TMPDIR"/data
+mkdir "$TMPDIR"/output
+mkdir "$TMPDIR"/cache
+
+# Copy root files. Do not recursively copy from the root, since the output folder needs to be excluded
+cp $HOME/ir2/* "$TMPDIR"
+cp -r $HOME/ir2/data "$TMPDIR"/data
+
 srun bash --user run.sh
+
+#Copy output data from scratch to home
+cp -r "$TMPDIR"/output $HOME/ir2/output
