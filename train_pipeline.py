@@ -1059,7 +1059,11 @@ if args.do_eval and args.local_rank in [-1, 0]:
 # In[12]:
 
 
-if args.do_test and args.local_rank in [-1, 0]:    
+if args.do_test and args.local_rank in [-1, 0]:
+    # TODO actual fix
+    args.retriever_tokenizer_dir = "./data/pipeline_checkpoint/retriever"
+    args.reader_tokenizer_dir = "./data/pipeline_checkpoint/reader"
+
     if args.do_eval:
         best_global_step = best_metrics['global_step'] 
     else:
@@ -1068,9 +1072,13 @@ if args.do_test and args.local_rank in [-1, 0]:
             args.retriever_tokenizer_dir, do_lower_case=args.do_lower_case)
         reader_tokenizer = reader_tokenizer_class.from_pretrained(
             args.reader_tokenizer_dir, do_lower_case=args.do_lower_case)
+
     best_checkpoint = os.path.join(
         args.output_dir, 'checkpoint-{}'.format(best_global_step))
     logger.info("Test the best checkpoint: %s", best_checkpoint)
+
+    #TODO actual fix
+    best_checkpoint = './data/pipeline_checkpoint/checkpoint-45000'
 
     model = Pipeline()
     model.retriever = retriever_model_class.from_pretrained(
