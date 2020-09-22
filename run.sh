@@ -36,7 +36,7 @@ python3 "$TMPDIR"/train_pipeline.py \
     --orig_dev_file="data/quac_format/dev.txt"\
     --orig_test_file="data/quac_format/test.txt"\
     --qrels="data/qrels.txt"\
-    --blocks_path=path_to_all_blocks_txt\
+    --blocks_path="data/all_blocks.txt"\
     --passage_reps_path="data/passage_reps.pkl"\
     --passage_ids_path="data/passage_ids.pkl"\
     --output_dir="./output"\
@@ -55,7 +55,7 @@ python3 "$TMPDIR"/train_pipeline.py \
     --eval_all_checkpoints=True \
     --fp16=False \
     --retriever_cache_dir="./cache" \
-    --retrieve_checkpoint="data/retriever_checkpoint/checkpoint-5917" \
+    --retrieve_checkpoint="data/pipeline_checkpoint/checkpoint-45000/retriever" \
     --retrieve_tokenizer_dir="data/retriever_checkpoint/" \
     --top_k_for_retriever=100 \
     --use_retriever_prob=True \
