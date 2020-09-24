@@ -166,7 +166,7 @@ def train(args, train_dataset, model, retriever_tokenizer, reader_tokenizer):
             retrieval_results = retrieve(args, qids, qid_to_idx, query_reps,
                                          passage_ids, passage_id_to_idx, passage_reps,
                                          qrels, qrels_sparse_matrix,
-                                         gpu_index, include_positive_passage=True)
+                                         faiss_index, include_positive_passage=True)
 
             #TODO might be nice to create some kind of RetrievalResults class so we dont need this indexing
             passage_reps_for_retriever = retrieval_results['passage_reps_for_retriever']
@@ -372,7 +372,7 @@ def evaluate(args, model, retriever_tokenizer, reader_tokenizer, prefix=""):
         retrieval_results = retrieve(args, qids, qid_to_idx, query_reps,
                                      passage_ids, passage_id_to_idx, passage_reps,
                                      qrels, qrels_sparse_matrix,
-                                     gpu_index, include_positive_passage=False)
+                                     faiss_index, include_positive_passage=False)
         retriever_probs = retrieval_results['retriever_probs']
         # print('retriever_probs before', retriever_probs)
         pids_for_reader = retrieval_results['pids_for_reader']
@@ -468,9 +468,9 @@ def gen_query_reps(args, model, batch):
 def retrieve(args, qids, qid_to_idx, query_reps,
              passage_ids, passage_id_to_idx, passage_reps,
              qrels, qrels_sparse_matrix,
-             gpu_index, include_positive_passage=False):
+             faiss_index, include_positive_passage=False):
     query_reps = query_reps.detach().cpu().numpy()
-    D, I = gpu_index.search(query_reps, args.top_k_for_retriever)
+    D, I = faiss_index.search(query_reps, args.top_k_for_retriever)
 
     pidx_for_retriever = np.copy(I)
     qidx = [qid_to_idx[qid] for qid in qids]
@@ -743,9 +743,7 @@ if args.fp16:
 passage_ids = load_pickle(args.passage_ids_path, logger)
 passage_reps = load_pickle(args.passage_reps_path, logger)
 
-
-#TODO change this var name, not allways a GPU index, can also be CPU based faiss index
-gpu_index = construct_faiss_index(passage_reps, args.proj_size, args.no_cuda, logger)
+faiss_index = construct_faiss_index(passage_reps, args.proj_size, args.no_cuda, logger)
 
 qrels = load_json(args.qrels, logger)
 passage_id_to_idx = create_inv_passage_id_index(passage_ids)
