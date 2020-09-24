@@ -46,7 +46,7 @@ from utils import (LazyQuacDatasetGlobal, RawResult,
 from retriever_utils import RetrieverDataset
 from modeling import Pipeline, AlbertForRetrieverOnlyPositivePassage, BertForOrconvqaGlobal
 from scorer import quac_eval
-
+from utils import GPUManager
 
 def set_seed(args):
     random.seed(args.seed)
@@ -567,22 +567,14 @@ def load_json(fname, logger):
     with open(args.qrels) as handle:
         return json.load(handle)
 
-#TODO combine with resource manager
-def construct_faiss_index(passage_reps, proj_size, no_cuda, logger):
+def construct_faiss_index(passage_reps, proj_size, no_cuda, logger, gpu_manager):
     logger.info('constructing passage faiss_index')
 
     index = faiss.IndexFlatIP(proj_size)
     index.add(passage_reps)
 
-    if torch.cuda.is_available() and not no_cuda:
-        faiss_res = faiss.StandardGpuResources()
-        if torch.cuda.device_count() > 1:
-            # run faiss on last gpu if more than 1 is available
-            gpuId = torch.cuda.device_count() - 1
-            index = faiss.index_cpu_to_gpu(faiss_res, gpuId, index)
-        else:
-            # otherwise use the only available one
-            index = faiss.index_cpu_to_gpu(faiss_res, 0, index)
+    if not no_cuda:
+        index = gpu_manager.faiss_index_to_gpu(index)
 
     return index
 
@@ -628,6 +620,7 @@ MODEL_CLASSES = {
 argparser = StdArgparser()
 args = argparser.get_parsed()
 
+gpu_manager = GPUManager()
 
 # TODO fix everything going through single output dir (better of with multiple subfiles per run unless continue flag is set)
 if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train and not args.overwrite_output_dir:
@@ -652,7 +645,7 @@ args.reader_tokenizer_dir = os.path.join(args.output_dir, 'reader')
 # Setup CUDA, GPU & distributed training
 # we now only support joint training on a single card
 # we will request two cards, one for torch and the other one for faiss
-# TODO create general resource manager class to assign GPU space, this code seems pretty bad (P.S. look at fais index creation)
+# TODO find out what this does and move to GPU manager, how the fuck could no_cuda still imply using gpu?
 if args.local_rank == -1 or args.no_cuda:
     device = torch.device(
         "cuda:0" if torch.cuda.is_available() and not args.no_cuda else "cpu")
@@ -677,6 +670,7 @@ logger.warning("Process rank: %s, device: %s, n_gpu: %s, distributed training: %
 set_seed(args)
 
 # Load pretrained model and tokenizer
+# TODO add to GPU manager
 if args.local_rank not in [-1, 0]:
     # Make sure only the first process in distributed training will download model & vocab
     torch.distributed.barrier()
@@ -718,11 +712,12 @@ reader_model = reader_model_class.from_pretrained(args.reader_model_name_or_path
 
 model.reader = reader_model
 
+# TODO add to GPU manager
 if args.local_rank == 0:
     # Make sure only the first process in distributed training will download model & vocab
     torch.distributed.barrier()
 
-# TODO What? assign again? Isnt GPU space already assigned?
+# TODO What? assign again? Isnt GPU space already assigned? And why assign by argument?
 model.to(args.device)
 
 logger.info("Training/evaluation parameters %s", args)
@@ -743,7 +738,7 @@ if args.fp16:
 passage_ids = load_pickle(args.passage_ids_path, logger)
 passage_reps = load_pickle(args.passage_reps_path, logger)
 
-faiss_index = construct_faiss_index(passage_reps, args.proj_size, args.no_cuda, logger)
+faiss_index = construct_faiss_index(passage_reps, args.proj_size, args.no_cuda, logger, gpu_manager)
 
 qrels = load_json(args.qrels, logger)
 passage_id_to_idx = create_inv_passage_id_index(passage_ids)
@@ -751,10 +746,6 @@ qrels_sparse_matrix, qid_to_idx = create_qrel_sparse_matrix(qrels, passage_id_to
 
 
 evaluator = pytrec_eval.RelevanceEvaluator(qrels, {'recip_rank', 'recall'})
-
-
-# In[10]:
-
 
 # Training
 if args.do_train:
@@ -848,6 +839,7 @@ if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0
 results = {}
 max_f1 = 0.0
 best_metrics = {}
+# TODO again local rank???
 if args.do_eval and args.local_rank in [-1, 0]:
     retriever_tokenizer = retriever_tokenizer_class.from_pretrained(
         args.retriever_tokenizer_dir, do_lower_case=args.do_lower_case)
@@ -909,7 +901,7 @@ if args.do_eval and args.local_rank in [-1, 0]:
 
 # In[12]:
 
-
+# TODO local rank?
 if args.do_test and args.local_rank in [-1, 0]:
     # TODO actual fix
     args.retriever_tokenizer_dir = "./data/pipeline_checkpoint/retriever"
@@ -950,10 +942,3 @@ if args.do_test and args.local_rank in [-1, 0]:
         json.dump(result, fout)
 
     logger.info("Test Result: {}".format(result))
-
-
-# In[ ]:
-
-
-
-

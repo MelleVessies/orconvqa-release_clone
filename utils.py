@@ -26,6 +26,8 @@ import numpy as np
 from io import open
 from tqdm import tqdm
 import torch
+import faiss
+from collections import defaultdict
 from torch.utils.data import Dataset
 
 from transformers.tokenization_bert import BasicTokenizer, whitespace_tokenize
@@ -417,14 +419,63 @@ class LazyQuacDatasetGlobal(LazyQuacDataset):
         # print(collated['input_ids'].shape)
         return collated
 
+class GPUManager:
+    def __init__(self):
+        if torch.cuda.is_available():
+            # dont know if these can ever be different but lets be sure
+            self.nGpu = min(faiss.get_num_gpus(), torch.cuda.device_count())
+        else:
+            self.nGpu = 0
 
+        self.gpuRegister = defaultdict(list)
+        self.gpuIdx = 0
+        self.policy = None
+        self.faiss_idx_count = 0
+
+
+    def register_gpu(self, id, use_cuda_prefix=True):
+        """Returns a GPU index for a given (process)id. Automatically assigns gpu's under default or given policy. """
+        assigned_idx = None
+        # implies no GPU return None
+        if self.nGpu == 0:
+            return assigned_idx
+        # return according to some predifined policy
+        if self.policy is not None:
+            self.gpuRegister[self.policy[id]].append(id)
+            assigned_idx = self.policy[id]
+        # simply assign the next gpu
+        else:
+            self.gpuRegister[self.gpuIdx].append(id)
+            assigned_idx = self.gpuIdx
+
+        self.gpuIdx = self.gpuIdx + 1 if self.gpuIdx < self.nGpu - 1 else 0
+        return assigned_idx if not use_cuda_prefix else f"cuda:{assigned_idx}"
+
+    def faiss_index_to_gpu(self, index, id=None, gpu_only=False):
+        """ Writes faiss index to GPU if GPU is available"""
+
+        if self.nGpu == 0 and gpu_only:
+            raise Exception("No gpu found while gpu_only was set")
+
+        if self.nGpu == 0:
+            return index
+
+        if id is None:
+            id = f"faisIdx{self.faiss_idx_count}"
+
+        gpu_idx = self.register_gpu(id, False)
+        faiss_res = faiss.StandardGpuResources()
+        return faiss.index_cpu_to_gpu(faiss_res, gpu_idx, index)
+
+
+    def __str__(self):
+        return str(self.gpuRegister)
 
     
 def is_whitespace(c):
     if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
         return True
     return False
-    
 
 def convert_example_to_feature(example, tokenizer, max_seq_length=512,
                                  doc_stride=384, max_query_length=125, is_training=True,
