@@ -13,6 +13,7 @@ from __future__ import absolute_import, division, print_function
 from stdargparser import StdArgparser
 import logging
 import os
+import platform
 import random
 import glob
 import timeit
@@ -545,6 +546,17 @@ def load_pickle(fname, logger):
     logger.info(f'loading pickle file: {fname}')
     if not os.path.isfile(fname):
         logger.error(f'Failed to open {fname}, file not found')
+
+    # Fix reading large pickle files on MAC systems
+    if platform.system() == "Darwin":
+        bytes_in = bytearray(0)
+        max_bytes = 2 ** 31 - 1
+        input_size = os.path.getsize(args.passage_ids_path)
+        with open(args.passage_ids_path, 'rb') as f_in:
+            for _ in range(0, input_size, max_bytes):
+                bytes_in += f_in.read(max_bytes)
+        return pkl.loads(bytes_in)
+
     with open(fname, 'rb') as handle:
         return joblib.load(handle)
 
@@ -732,37 +744,8 @@ passage_ids = load_pickle(args.passage_ids_path, logger)
 passage_reps = load_pickle(args.passage_reps_path, logger)
 
 
-# TODO reading large .plk files for Mac
-'''
-# GIGURU & MELLE: Other way to read pkl files, because they are too large
-# https://stackoverflow.com/questions/31468117/python-3-can-pickle-handle-byte-objects-larger-than-4gb
-Start replacement
-logger.info(f'loading passage ids from {args.passage_ids_path}')
-bytes_in = bytearray(0)
-max_bytes = 2**31 - 1
-input_size = os.path.getsize(args.passage_ids_path)
-with open(args.passage_ids_path, 'rb') as f_in:
-    for _ in range(0, input_size, max_bytes):
-        bytes_in += f_in.read(max_bytes)
-passage_ids = pkl.loads(bytes_in)
-
-logger.info(f'loading passage reps from {args.passage_reps_path}')
-input_size = os.path.getsize(args.passage_reps_path)
-with open(args.passage_reps_path, 'rb') as f_in:
-    for _ in range(0, input_size, max_bytes):
-        bytes_in += f_in.read(max_bytes)
-passage_reps = pkl.loads(bytes_in)
-#end replacement
-'''
-
-
 #TODO change this var name, not allways a GPU index, can also be CPU based faiss index
 gpu_index = construct_faiss_index(passage_reps, args.proj_size, args.no_cuda, logger)
-
-# logger.info(f'loading all blocks from {args.blocks_path}')
-# with open(args.blocks_path, 'rb') as handle:
-#     blocks_array = pkl.load(handle)
-
 
 qrels = load_json(args.qrels, logger)
 passage_id_to_idx = create_inv_passage_id_index(passage_ids)
