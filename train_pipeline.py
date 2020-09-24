@@ -92,6 +92,7 @@ def train(args, train_dataset, model, retriever_tokenizer, reader_tokenizer):
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter(os.path.join(args.output_dir, 'logs'))
 
+    # TODO fix args override, realy dude?
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
     train_sampler = RandomSampler(
         train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
@@ -100,6 +101,7 @@ def train(args, train_dataset, model, retriever_tokenizer, reader_tokenizer):
 
     if args.max_steps > 0:
         t_total = args.max_steps
+        # TODO fix args override, realy dude?
         args.num_train_epochs = args.max_steps // (
             len(train_dataloader) // args.gradient_accumulation_steps) + 1
     else:
@@ -116,9 +118,13 @@ def train(args, train_dataset, model, retriever_tokenizer, reader_tokenizer):
     ]
     optimizer = AdamW(optimizer_grouped_parameters,
                       lr=args.learning_rate, eps=args.adam_epsilon)
+
+    # TODO fix args override, realy dude? staaaphhh
     args.warmup_steps = int(t_total * args.warmup_portion)
     scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total)
+
+    # TODO dont do this here
     if args.fp16:
         try:
             from apex import amp
@@ -128,6 +134,7 @@ def train(args, train_dataset, model, retriever_tokenizer, reader_tokenizer):
         model, optimizer = amp.initialize(
             model, optimizer, opt_level=args.fp16_opt_level)
 
+    # TODO fair enough, should go through future resource-manager class
     # multi-gpu training (should be after apex fp16 initialization)
     if args.n_gpu > 1:
         model = torch.nn.DataParallel(model)
@@ -160,6 +167,8 @@ def train(args, train_dataset, model, retriever_tokenizer, reader_tokenizer):
     model.zero_grad()
     train_iterator = trange(int(args.num_train_epochs),
                             desc="Epoch", disable=args.local_rank not in [-1, 0])
+
+    # TODO fun, eval doesnt even run on python 3.6 (only 3.7), I think this comment might be old
     # Added here for reproductibility (even between python 2 and 3)
     set_seed(args)
     for _ in train_iterator:
@@ -167,6 +176,8 @@ def train(args, train_dataset, model, retriever_tokenizer, reader_tokenizer):
                               disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
             model.eval() # we first get query representations in eval mode
+
+            # TODO casting to numpy and back to list seems inefficient
             qids = np.asarray(batch['qid']).reshape(-1).tolist()
             # print('qids', qids)
             question_texts = np.asarray(
@@ -184,6 +195,8 @@ def train(args, train_dataset, model, retriever_tokenizer, reader_tokenizer):
                                          passage_ids, passage_id_to_idx, passage_reps,
                                          qrels, qrels_sparse_matrix,
                                          gpu_index, include_positive_passage=True)
+
+            #TODO might be nice to create some kind of RetrievalResults class so we dont need this indexing
             passage_reps_for_retriever = retrieval_results['passage_reps_for_retriever']
             labels_for_retriever = retrieval_results['labels_for_retriever']
 
@@ -373,6 +386,8 @@ def evaluate(args, model, retriever_tokenizer, reader_tokenizer, prefix=""):
     start_time = timeit.default_timer()
     for batch in tqdm(eval_dataloader, desc="Evaluating"):
         model.eval()
+
+        # TODO casting to numpy and back to list seems inefficient
         qids = np.asarray(batch['qid']).reshape(-1).tolist()
         # print(qids)
         question_texts = np.asarray(
@@ -569,6 +584,7 @@ def load_json(fname, logger):
     with open(args.qrels) as handle:
         return json.load(handle)
 
+#TODO combine with resource manager
 def construct_faiss_index(passage_reps, proj_size, no_cuda, logger):
     logger.info('constructing passage faiss_index')
 
@@ -613,7 +629,7 @@ def create_qrel_sparse_matrix(qrels, passage_id_to_idx):
 
 # In[9]:
 
-
+# TODO move args to separate class and only give main function access to it (class is just for readability)
 parser = argparse.ArgumentParser()
 
 # arguments shared by the retriever and reader
@@ -803,9 +819,12 @@ parser.add_argument("--use_rerank_prob", default=True, type=str2bool,
 
 args, unknown = parser.parse_known_args()
 
+# TODO fix everything going through single output dir (better of with multiple subfiles per run unless continue flag is set)
 if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train and not args.overwrite_output_dir:
     raise ValueError(
         "Output directory ({}) already exists and is not empty. Use --overwrite_output_dir to overcome.".format(args.output_dir))
+
+# TODO DONT OVERWRITE ARGUMENTS
 args.retriever_tokenizer_dir = os.path.join(args.output_dir, 'retriever')
 args.reader_tokenizer_dir = os.path.join(args.output_dir, 'reader')
 
@@ -823,7 +842,7 @@ args.reader_tokenizer_dir = os.path.join(args.output_dir, 'reader')
 # Setup CUDA, GPU & distributed training
 # we now only support joint training on a single card
 # we will request two cards, one for torch and the other one for faiss
-# TODO create general resource manager class to assign GPU space, this code seems pretty bad
+# TODO create general resource manager class to assign GPU space, this code seems pretty bad (P.S. look at fais index creation)
 if args.local_rank == -1 or args.no_cuda:
     device = torch.device(
         "cuda:0" if torch.cuda.is_available() and not args.no_cuda else "cpu")
@@ -893,7 +912,7 @@ if args.local_rank == 0:
     # Make sure only the first process in distributed training will download model & vocab
     torch.distributed.barrier()
 
-# TODO What? assign again?
+# TODO What? assign again? Isnt GPU space already assigned?
 model.to(args.device)
 
 logger.info("Training/evaluation parameters %s", args)
@@ -976,6 +995,7 @@ if args.do_train:
 # Save the trained model and the tokenizer
 if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
     # Create output directory if needed
+    # TODO should be easy to move to own function
     if not os.path.exists(args.output_dir) and args.local_rank in [-1, 0]:
         os.makedirs(args.output_dir)
     if not os.path.exists(args.retriever_tokenizer_dir) and args.local_rank in [-1, 0]:
@@ -990,10 +1010,14 @@ if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0
     model_to_save = model.module if hasattr(model, 'module') else model
     final_checkpoint_output_dir = os.path.join(
         args.output_dir, 'checkpoint-{}'.format(global_step))
+
+    # TODO fine, but maybe move to function?
     final_retriever_model_dir = os.path.join(
         final_checkpoint_output_dir, 'retriever')
     final_reader_model_dir = os.path.join(
         final_checkpoint_output_dir, 'reader')
+
+    # TODO should be easy to move to own function
     if not os.path.exists(final_checkpoint_output_dir):
         os.makedirs(final_checkpoint_output_dir)
     if not os.path.exists(final_retriever_model_dir):
@@ -1001,12 +1025,16 @@ if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0
     if not os.path.exists(final_reader_model_dir):
         os.makedirs(final_reader_model_dir)
 
+    # save retriever
     retriever_model_to_save = model_to_save.retriever
-    retriever_model_to_save.save_pretrained(
-        final_retriever_model_dir)
+    retriever_model_to_save.save_pretrained(final_retriever_model_dir)
+
+    #save reader
     reader_model_to_save = model_to_save.reader
     reader_model_to_save.save_pretrained(final_reader_model_dir)
 
+    # save reader and retriever tokenizers
+    # TODO dont use args - think about file structure (saving over input seems wrong)
     retriever_tokenizer.save_pretrained(args.retriever_tokenizer_dir)
     reader_tokenizer.save_pretrained(args.reader_tokenizer_dir)
 
@@ -1014,6 +1042,7 @@ if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0
     torch.save(args, os.path.join(
         final_checkpoint_output_dir, 'training_args.bin'))
 
+    # TODO didnt we just save these?
     # Load a trained model and vocabulary that you have fine-tuned
     model = Pipeline()
 
