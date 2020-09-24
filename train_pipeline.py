@@ -25,6 +25,7 @@ from tqdm import tqdm, trange
 import pytrec_eval
 import scipy as sp
 from copy import copy
+import joblib
 
 import torch
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
@@ -554,6 +555,61 @@ def get_passage(i, args):
     return line['text']
 get_passages = np.vectorize(get_passage)
 
+def load_pickle(fname, logger):
+    logger.info(f'loading pickle file: {fname}')
+    if not os.path.isfile(fname):
+        logger.error(f'Failed to open {fname}, file not found')
+    with open(fname, 'rb') as handle:
+        return joblib.load(handle)
+
+def load_json(fname, logger):
+    logger.info(f'loading json file {fname}')
+    if not os.path.isfile(fname):
+        logger.error(f'Failed to open {fname}, file not found')
+    with open(args.qrels) as handle:
+        return json.load(handle)
+
+def construct_faiss_index(passage_reps, proj_size, no_cuda, logger):
+    logger.info('constructing passage faiss_index')
+
+    index = faiss.IndexFlatIP(proj_size)
+    index.add(passage_reps)
+
+    if torch.cuda.is_available() and not no_cuda:
+        faiss_res = faiss.StandardGpuResources()
+        if torch.cuda.device_count() > 1:
+            # run faiss on last gpu if more than 1 is available
+            gpuId = torch.cuda.device_count() - 1
+            index = faiss.index_cpu_to_gpu(faiss_res, gpuId, index)
+        else:
+            # otherwise use the only available one
+            index = faiss.index_cpu_to_gpu(faiss_res, 0, index)
+
+    return index
+
+def create_inv_passage_id_index(passage_ids):
+    # TODO this seems like a slow way to do this
+    passage_id_to_idx = {}
+    for i, pid in enumerate(passage_ids):
+        passage_id_to_idx[pid] = i
+    return passage_id_to_idx
+
+# TODO rename, also returns inverse quid index
+def create_qrel_sparse_matrix(qrels, passage_id_to_idx):
+    # TODO no loops?
+    qrels_data, qrels_row_idx, qrels_col_idx = [], [], []
+    qid_to_idx = {}
+    for i, (qid, v) in enumerate(qrels.items()):
+        qid_to_idx[qid] = i
+        for pid in v.keys():
+            qrels_data.append(1)
+            qrels_row_idx.append(i)
+            qrels_col_idx.append(passage_id_to_idx[pid])
+
+    qrels_sparse_matrix = sp.sparse.csr_matrix(
+        (qrels_data, (qrels_row_idx, qrels_col_idx)))
+
+    return qrels_sparse_matrix, qid_to_idx
 
 # In[9]:
 
@@ -752,18 +808,22 @@ if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_t
         "Output directory ({}) already exists and is not empty. Use --overwrite_output_dir to overcome.".format(args.output_dir))
 args.retriever_tokenizer_dir = os.path.join(args.output_dir, 'retriever')
 args.reader_tokenizer_dir = os.path.join(args.output_dir, 'reader')
+
+
 # Setup distant debugging if needed
-if args.server_ip and args.server_port:
-    # Distant debugging - see https://code.visualstudio.com/docs/python/debugging#_attach-to-a-local-script
-    import ptvsd
-    print("Waiting for debugger attach")
-    ptvsd.enable_attach(
-        address=(args.server_ip, args.server_port), redirect_output=True)
-    ptvsd.wait_for_attach()
+# TODO remove? Seems outside of the scope of this project
+# if args.server_ip and args.server_port:
+#     # Distant debugging - see https://code.visualstudio.com/docs/python/debugging#_attach-to-a-local-script
+#     import ptvsd
+#     print("Waiting for debugger attach")
+#     ptvsd.enable_attach(
+#         address=(args.server_ip, args.server_port), redirect_output=True)
+#     ptvsd.wait_for_attach()
 
 # Setup CUDA, GPU & distributed training
 # we now only support joint training on a single card
 # we will request two cards, one for torch and the other one for faiss
+# TODO create general resource manager class to assign GPU space, this code seems pretty bad
 if args.local_rank == -1 or args.no_cuda:
     device = torch.device(
         "cuda:0" if torch.cuda.is_available() and not args.no_cuda else "cpu")
@@ -833,6 +893,7 @@ if args.local_rank == 0:
     # Make sure only the first process in distributed training will download model & vocab
     torch.distributed.barrier()
 
+# TODO What? assign again?
 model.to(args.device)
 
 logger.info("Training/evaluation parameters %s", args)
@@ -840,6 +901,7 @@ logger.info("Training/evaluation parameters %s", args)
 # Before we do anything with models, we want to ensure that we get fp16 execution of torch.einsum if args.fp16 is set.
 # Otherwise it'll default to "promote" mode, and we'll get fp32 operations. Note that running `--fp16_opt_level="O2"` will
 # remove the need for this code, but it is still valid.
+# TODO do we need this?
 if args.fp16:
     try:
         import apex
@@ -849,15 +911,11 @@ if args.fp16:
             "Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
 
 
-logger.info(f'loading passage ids from {args.passage_ids_path}')
-with open(args.passage_ids_path, 'rb') as handle:
-    passage_ids = pkl.load(handle)
+passage_ids = load_pickle(args.passage_ids_path, logger)
+passage_reps = load_pickle(args.passage_reps_path, logger)
 
-logger.info(f'loading passage reps from {args.passage_reps_path}')
-with open(args.passage_reps_path, 'rb') as handle:
-    passage_reps = pkl.load(handle)
 
-# TODO reading .plk files for Mac
+# TODO reading large .plk files for Mac
 '''
 # GIGURU & MELLE: Other way to read pkl files, because they are too large
 # https://stackoverflow.com/questions/31468117/python-3-can-pickle-handle-byte-objects-larger-than-4gb
@@ -879,35 +937,20 @@ with open(args.passage_reps_path, 'rb') as f_in:
 passage_reps = pkl.loads(bytes_in)
 #end replacement
 '''
-logger.info('constructing passage faiss_index')
-faiss_res = faiss.StandardGpuResources() 
-index = faiss.IndexFlatIP(args.proj_size)
-index.add(passage_reps)
-gpu_index = faiss.index_cpu_to_gpu(faiss_res, 0, index)
+
+
+#TODO change this var name, not allways a GPU index, can also be CPU based faiss index
+gpu_index = construct_faiss_index(passage_reps, args.proj_size, args.no_cuda, logger)
 
 # logger.info(f'loading all blocks from {args.blocks_path}')
 # with open(args.blocks_path, 'rb') as handle:
 #     blocks_array = pkl.load(handle)
 
 
-logger.info(f'loading qrels from {args.qrels}')
-with open(args.qrels) as handle:
-    qrels = json.load(handle)
+qrels = load_json(args.qrels, logger)
+passage_id_to_idx = create_inv_passage_id_index(passage_ids)
+qrels_sparse_matrix, qid_to_idx = create_qrel_sparse_matrix(qrels, passage_id_to_idx)
 
-passage_id_to_idx = {}
-for i, pid in enumerate(passage_ids):
-    passage_id_to_idx[pid] = i
-
-qrels_data, qrels_row_idx, qrels_col_idx = [], [], []
-qid_to_idx = {}
-for i, (qid, v) in enumerate(qrels.items()):
-    qid_to_idx[qid] = i
-    for pid in v.keys():
-        qrels_data.append(1)
-        qrels_row_idx.append(i)
-        qrels_col_idx.append(passage_id_to_idx[pid])
-qrels_sparse_matrix = sp.sparse.csr_matrix(
-    (qrels_data, (qrels_row_idx, qrels_col_idx)))
 
 evaluator = pytrec_eval.RelevanceEvaluator(qrels, {'recip_rank', 'recall'})
 
